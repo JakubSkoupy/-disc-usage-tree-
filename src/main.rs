@@ -1,47 +1,37 @@
 // DISC USAGE TREE
 use clap::Parser;
+use tree::FileTree;
+mod tree;
+mod print;
 
 #[derive(Parser)]
 #[clap(version = "1.0", author = "Jakub Skoupy")]
 
-struct Options {
+#[derive(Clone)]
+pub struct Options {
     #[clap(short = 'b')]
     block_size: bool,
 
-    #[clap(short='p')]
+    #[clap(short = 'p')]
     percent: bool,
 
-    #[clap(short='n')]
+    #[clap(short = 'n')]
     name_sort: bool,
 
-    #[clap(short='d', default_value = "false")]
+    #[clap(short = 'd', default_value = "false")]
     device: bool,
 
-    #[clap(short = 'l', long = "depth", default_value = "None")]
+    #[clap(short = 'l', long = "depth")]
     depth: Option<u32>,
 }
 
-
 fn main() {
-    let parse_options: Result<Options, clap::Error> = Ok(Options::parse());
-    let options: Options;
+    let options = Options::parse();
+    let path = std::path::Path::new("/home");
 
-    match parse_options {
+    let opt_depthless = options.clone();
 
-        Ok(opts) => {
-            match opts.depth {
-                None => println!("No depth specified"),
-                Some(num) => println!("Depth: {}", num),
-            }
-            if opts.block_size {
-                println!("Using block size");
-            }
-        }
-
-        Err(_) => {
-            eprintln!("Ses asi uplne posral ne?! \
-            nemuzes si proste vymyslet ze chces hloubkove omezeni \
-            a pak nerict jake")
-        }
-    }
+    let tree = FileTree::build(&path, opt_depthless);
+    let mut prefix = Vec::new();
+    tree.root.print(options, &mut prefix);
 }
