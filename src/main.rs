@@ -1,5 +1,5 @@
 // DISC USAGE TREE
-use clap::{Parser, };
+use clap::{Parser};
 use tree::FileTree;
 use std::path;
 mod print;
@@ -41,8 +41,8 @@ fn main() {
 
     let tree = FileTree::build(&pathbuf, &options);
     let mut _prefix: Vec<&str> = Vec::new();
-    match tree {
-        Err(_) => eprintln!("Mas to napicu"),
-        Ok(_tree) => _tree.print(options, &mut _prefix),
+
+    if let Ok(filetree) = tree {
+        filetree.print(options, &mut _prefix);
     }
 }
