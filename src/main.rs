@@ -1,6 +1,7 @@
 // DISC USAGE TREE
-use clap::Parser;
+use clap::{Parser, };
 use tree::FileTree;
+use std::path;
 mod print;
 mod tree;
 
@@ -22,13 +23,23 @@ pub struct Options {
 
     #[clap(short = 'l', long = "depth")]
     depth: Option<u32>,
+
+    #[clap(long = "decimal")]
+    decimal: bool,
+
+    #[clap()]
+    path: String,
 }
 
 fn main() {
     let options = Options::parse();
     let _opt_depthless = options.clone();
 
-    let tree = FileTree::build("/".to_string());
+    let path = path::Path::new(&options.path);
+    let mut pathbuf = path::PathBuf::new();
+    pathbuf.push(path);
+
+    let tree = FileTree::build(&pathbuf, &options);
     let mut _prefix: Vec<&str> = Vec::new();
     match tree {
         Err(_) => eprintln!("Mas to napicu"),

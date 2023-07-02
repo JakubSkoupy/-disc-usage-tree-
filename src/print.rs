@@ -50,7 +50,7 @@ impl FileNode {
         let (end, root) = flags;
 
         if !root {
-            &self.print(&options, &prefix, flags);
+            self.print(&options, &prefix, flags);
             prefix.push(if end { SPACE } else { PIPE });
         }
 
@@ -69,13 +69,15 @@ impl FileNode {
     }
 
     fn print_size(options: &Options, mut size: u64) {
+        let divisor = if options.decimal {DIVISOR_DEC} else {DIVISOR};
+        let units = if options.decimal {UNITS_DEC} else {UNITS};
         let mut unit = 0;
-        while size > DIVISOR {
-            size /= DIVISOR;
+        while size > divisor {
+            size /= divisor;
             unit += 1;
         }
         print!("{:1$}", size, 4);
-        print!(" {:>1$}  ", UNITS[unit], 3);
+        print!(" {:>1$}  ", units[unit], 3);
     }
 }
 

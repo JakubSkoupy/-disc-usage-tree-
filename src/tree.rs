@@ -1,6 +1,8 @@
 // use crate::Options;
 use std::fs::read_dir;
+use std::os::unix::fs::FileTypeExt;
 use std::os::linux::fs::MetadataExt;
+use crate::Options;
 use std::path::{Path, PathBuf};
 
 pub struct FileNode {
@@ -31,17 +33,23 @@ fn directory_items<'a>(
 }
 
 impl FileNode {
-    fn build_subtree(path: Box<PathBuf>) -> Option<FileNode> {
+    fn build_subtree(path: Box<PathBuf>, options: &Options) -> Option<FileNode> {
         // FILE EXISTS
         if !path.exists() {
             // eprintln!("Invalid Path {}", path.display());
             return None;
         }
 
+        if let Some(parent) = path.parent() {
+            if parent == Path::new("/proc"){
+                return None;
+            }
+        }
+
         // FILE NAME
         let path_string = path.to_string_lossy();
         let name = match path_string.rsplit_once('/') {
-            None => "",
+            None => &path_string,
             Some((_, name)) => name,
         };
 
@@ -55,26 +63,25 @@ impl FileNode {
         // METADATA
         let metadata = match path.metadata() {
             Err(_) => {
-                //eprintln!("Unable to read file {}", path.display());
                 return Some(node);
             }
             Ok(data) => data,
         };
-        node.size = metadata.st_size();
 
         // DIRECTORY FILES
-        if path.is_symlink() {
+        let ftype = metadata.file_type();
+        if ftype.is_char_device() || path.is_symlink() || ftype.is_fifo() || ftype.is_socket() || ftype.is_block_device()  {
             return Some(node);
         }
 
+        node.size = if options.block_size {metadata.st_blksize()} else {metadata.st_size()};
         let mut items = Vec::new();
         if let Err(_) = directory_items(path.clone(), &mut items) {
-            // eprintln!("Unable to read file {}", path.display());
         } // TODO VOID RETURN
 
         // SUB TREES
         for item in items.iter() {
-            let child = FileNode::build_subtree(item.clone());
+            let child = FileNode::build_subtree(item.clone(), options);
             let child = match child {
                 Some(ch) => Box::new(ch),
                 None => continue,
@@ -92,12 +99,10 @@ pub struct FileTree {
 }
 
 impl FileTree {
-    pub fn build(path: String) -> Result<FileTree, std::io::Error> {
-        let mut buf = PathBuf::new();
-        buf.push(Path::new(&path));
-        let path = Box::new(buf);
+    pub fn build(path: &PathBuf, options: &Options) -> Result<FileTree, std::io::Error> {
+        let path = Box::new(path.clone());
 
-        let root = FileNode::build_subtree(path);
+        let root = FileNode::build_subtree(path, options);
         Ok(FileTree { root })
     }
 }
