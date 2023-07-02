@@ -1,9 +1,7 @@
-use crate::Options;
+// use crate::Options;
+use std::fs::read_dir;
 use std::os::linux::fs::MetadataExt;
-use std::path::Path;
-use std::fs;
-
-
+use std::path::{Path, PathBuf};
 
 pub struct FileNode {
     pub name: String,
@@ -11,85 +9,95 @@ pub struct FileNode {
     pub children: Vec<Box<FileNode>>,
 }
 
-impl FileNode {
-    fn new(name: String) -> Self {
-        FileNode {
-            name,
-            size: 0,
-            children: Vec::new(),
-        }
+fn directory_items<'a>(
+    path: Box<PathBuf>,
+    items: &'a mut Vec<Box<PathBuf>>,
+) -> Result<(), std::io::Error> {
+    // NOT A DIRECTORY
+    if !path.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Not a directory",
+        ));
     }
 
-    fn build_subtree(&mut self, options: Options) -> () {
-        // DEPTH LIMIT
-        let mut depth_limit = false;
-        let mut depth = 0;
+    let dir = read_dir(*path)?;
+    for item in dir {
+        let item = item?;
+        let item_path = Box::new(item.path());
+        items.push(item_path);
+    }
+    Ok(())
+}
 
-        // THIS IS FUCKING RETARDED AND UGLY
-        if let Some(depth_) = options.depth {
-            depth_limit = true;
-            if depth_ == 0 {
-                return ();
-            }
-            depth = depth_;
+impl FileNode {
+    fn build_subtree(path: Box<PathBuf>) -> Option<FileNode> {
+        // FILE EXISTS
+        if !path.exists() {
+            // eprintln!("Invalid Path {}", path.display());
+            return None;
         }
-        // UP TO HERE
 
-        let path = self.name.clone();
-        let dir = match fs::read_dir(path) {
-            Err(_) => return (), // TODO ERROR TYPES
-            Ok(dir_) => dir_,
+        // FILE NAME
+        let path_string = path.to_string_lossy();
+        let name = match path_string.rsplit_once('/') {
+            None => "",
+            Some((_, name)) => name,
         };
 
-        for item in dir {
-            let ( file_data, path ) = match item {
-                Err(_) => continue,
-                Ok(f) => match f.metadata() {
-                    Err(_) => continue,
-                    Ok(data) => ( data, f.path() ),
-                },
+        // NODE
+        let mut node = FileNode {
+            name: name.to_string(),
+            size: 0,
+            children: Vec::new(),
+        };
+
+        // METADATA
+        let metadata = match path.metadata() {
+            Err(_) => {
+                //eprintln!("Unable to read file {}", path.display());
+                return Some(node);
+            }
+            Ok(data) => data,
+        };
+        node.size = metadata.st_size();
+
+        // DIRECTORY FILES
+        if path.is_symlink() {
+            return Some(node);
+        }
+
+        let mut items = Vec::new();
+        if let Err(_) = directory_items(path.clone(), &mut items) {
+            // eprintln!("Unable to read file {}", path.display());
+        } // TODO VOID RETURN
+
+        // SUB TREES
+        for item in items.iter() {
+            let child = FileNode::build_subtree(item.clone());
+            let child = match child {
+                Some(ch) => Box::new(ch),
+                None => continue,
             };
 
-            let name = path.to_string_lossy();
-            println!("file: {}", name);
-            let mut file_node = Box::new(FileNode::new(name.to_string()));
-            file_node.size = file_data.st_blksize();
-            if file_data.is_dir() && !file_data.is_symlink() {
-                // DIRECTORY
-                let mut subtree_options = options.clone();
-                subtree_options.depth = if depth_limit {Some(depth - 1)} else {None};
-                file_node.build_subtree(subtree_options);
-                self.size += file_node.size;
-            }
-            self.children.push(file_node);
+            node.size += child.size;
+            node.children.push(child);
         }
-        // self.children.sort_by()
+        Some(node)
     }
 }
 
 pub struct FileTree {
-    pub root: FileNode,
+    pub root: Option<FileNode>,
 }
 
 impl FileTree {
-    pub fn new() -> Self {
-        let root = FileNode::new("/".to_string());
-        FileTree { root }
-    }
+    pub fn build(path: String) -> Result<FileTree, std::io::Error> {
+        let mut buf = PathBuf::new();
+        buf.push(Path::new(&path));
+        let path = Box::new(buf);
 
-    pub fn build(directory_path: &Path, options: Options) -> Self {
-        let mut tree = FileTree::new();
-        let data = directory_path.metadata();
-        let data = match data {
-            Err(_) => return tree,
-            Ok(d) => d,
-        };
-
-        if !data.is_dir() {
-            return tree;
-        }
-
-        tree.root.build_subtree(options);
-        tree
+        let root = FileNode::build_subtree(path);
+        Ok(FileTree { root })
     }
 }

@@ -1,12 +1,11 @@
 // DISC USAGE TREE
 use clap::Parser;
 use tree::FileTree;
-mod tree;
 mod print;
+mod tree;
 
 #[derive(Parser)]
 #[clap(version = "1.0", author = "Jakub Skoupy")]
-
 #[derive(Clone)]
 pub struct Options {
     #[clap(short = 'b')]
@@ -27,11 +26,12 @@ pub struct Options {
 
 fn main() {
     let options = Options::parse();
-    let path = std::path::Path::new("/home");
+    let _opt_depthless = options.clone();
 
-    let opt_depthless = options.clone();
-
-    let tree = FileTree::build(&path, opt_depthless);
-    let mut prefix = Vec::new();
-    tree.root.print(options, &mut prefix);
+    let tree = FileTree::build("/".to_string());
+    let mut _prefix: Vec<&str> = Vec::new();
+    match tree {
+        Err(_) => eprintln!("Mas to napicu"),
+        Ok(_tree) => _tree.print(options, &mut _prefix),
+    }
 }
