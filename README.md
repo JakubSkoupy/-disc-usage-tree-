@@ -4,6 +4,7 @@ This is my first rust app, It's main use is for me to get familiar with the lang
 CLI application which prints a file tree and information about their size. Combination of
 du and tree.
 
+```
 USAGE: ./dtree [ OPTIONS ] [ PATH ]
 
 [ OPTIONS ]
@@ -24,3 +25,4 @@ USAGE: ./dtree [ OPTIONS ] [ PATH ]
 -- quiet                          Supresses error messages.
 
 -- verbose                        (does not work yet).
+```
