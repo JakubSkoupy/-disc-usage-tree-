@@ -1,95 +1,96 @@
 // use crate::Options;
-use std::fs::read_dir;
+use crate::{
+    data_functions::{self, sort_items},
+    options::Options,
+    print::error_display,
+};
+use std::fs::{read_dir, FileType};
 use std::os::unix::fs::FileTypeExt;
-use std::os::linux::fs::MetadataExt;
-use crate::Options;
 use std::path::{Path, PathBuf};
 
 pub struct FileNode {
     pub name: String,
     pub size: u64,
     pub children: Vec<Box<FileNode>>,
+    pub error: bool,
+    pub filetype: Option<FileType>,
 }
 
-fn directory_items<'a>(
-    path: Box<PathBuf>,
-    items: &'a mut Vec<Box<PathBuf>>,
-) -> Result<(), std::io::Error> {
-    // NOT A DIRECTORY
+fn directory_items<'a>(path: Box<PathBuf>) -> Vec<Box<PathBuf>> {
+    let mut items: Vec<Box<PathBuf>> = Vec::new();
     if !path.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Not a directory",
-        ));
-    }
+        return items;
+    };
 
-    let dir = read_dir(*path)?;
+    let dir = match read_dir(*path) {
+        Err(_) => return items,
+        Ok(directory) => directory,
+    };
+
     for item in dir {
-        let item = item?;
+        let item = item.unwrap();
         let item_path = Box::new(item.path());
         items.push(item_path);
     }
-    Ok(())
+    items
+}
+
+fn parse_name(path: &Box<PathBuf>) -> String {
+    let string = path.to_string_lossy();
+    match string.clone().rsplit_once('/') {
+        None => string.to_string(),
+        Some((_, name)) => name.to_string(),
+    }
 }
 
 impl FileNode {
+    fn new(name: String) -> Self {
+        FileNode {
+            name: name.to_string(),
+            size: 0,
+            children: Vec::new(),
+            error: false,
+            filetype: None,
+        }
+    }
+
     fn build_subtree(path: Box<PathBuf>, options: &Options) -> Option<FileNode> {
         // FILE EXISTS
         if !path.exists() {
-            // eprintln!("Invalid Path {}", path.display());
+            let error = format!("Invalid Path {}", path.display());
+            error_display(&error, options, 1);
             return None;
         }
 
         if let Some(parent) = path.parent() {
-            if parent == Path::new("/proc"){
+            if parent == Path::new("/proc") {
                 return None;
             }
-        }
-
-        // FILE NAME
-        let path_string = path.to_string_lossy();
-        let name = match path_string.rsplit_once('/') {
-            None => &path_string,
-            Some((_, name)) => name,
         };
-
-        // NODE
-        let mut node = FileNode {
-            name: name.to_string(),
-            size: 0,
-            children: Vec::new(),
-        };
+        let mut node = FileNode::new(parse_name(&path));
 
         // METADATA
         let metadata = match path.metadata() {
-            Err(_) => {
-                return Some(node);
-            }
+            Err(_) => return Some(node),
             Ok(data) => data,
         };
-
-        // DIRECTORY FILES
         let ftype = metadata.file_type();
-        if ftype.is_char_device() || path.is_symlink() || ftype.is_fifo() || ftype.is_socket() || ftype.is_block_device()  {
+        node.filetype = Some(ftype);
+        if ftype.is_char_device() || path.is_symlink() {
             return Some(node);
-        }
-
-        node.size = if options.block_size {metadata.st_blksize()} else {metadata.st_size()};
-        let mut items = Vec::new();
-        if let Err(_) = directory_items(path.clone(), &mut items) {
-        } // TODO VOID RETURN
+        };
 
         // SUB TREES
-        for item in items.iter() {
-            let child = FileNode::build_subtree(item.clone(), options);
-            let child = match child {
-                Some(ch) => Box::new(ch),
-                None => continue,
-            };
+        node.size = data_functions::file_size(&metadata, &options);
+        let items = directory_items(path);
 
-            node.size += child.size;
-            node.children.push(child);
+        for item in items.iter() {
+            if let Some(child) = FileNode::build_subtree(item.clone(), options) {
+                node.size += child.size;
+                node.children.push(Box::new(child));
+            }
         }
+        sort_items(&mut node.children, options);
         Some(node)
     }
 }

@@ -1,23 +1,33 @@
+use std::os::unix::prelude::FileTypeExt;
+
+use crate::options::Options;
 use crate::tree::FileNode;
 use crate::tree::FileTree;
-use crate::Options;
+use colored::Colorize;
 
 const BRANCH: &str = "├── ";
 const END: &str = "└── ";
 const PIPE: &str = "│   ";
 const SPACE: &str = "    ";
 
-const UNITS: [&str; 7] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
-const UNITS_DEC: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+pub const UNITS: [&str; 7] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+pub const UNITS_DEC: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
 
-const DIVISOR: u64 = 1024;
-const DIVISOR_DEC: u64 = 1000;
+pub const DIVISOR: u64 = 1024;
+pub const DIVISOR_DEC: u64 = 1000;
+
+pub fn error_display(message: &str, options: &Options, verbosity: u8) {
+    if options.verbosity >= verbosity {
+        eprintln!("{}", message);
+    }
+}
 
 impl FileNode {
     fn print(&self, options: &Options, prefix: &Vec<&str>, flags: (bool, bool)) -> () {
         let (end, root) = flags;
-        FileNode::print_size(options, self.size);
-        print!("{}", prefix.join(""));
+
+        let size_string = FileNode::size_string(options, self.size);
+        print!("{:>13}{}", size_string, &prefix.join(""));
 
         if !root {
             if end {
@@ -26,58 +36,56 @@ impl FileNode {
                 print!("{}", BRANCH)
             };
         }
-        println!("{}", self.name);
+
+        let mut colored_name = self.name.white();
+        colored_name = match self.filetype {
+            None => colored_name.bright_red().underline(),
+            Some(x) if x.is_dir() => colored_name.bold().cyan(),
+            Some(x) if x.is_symlink() => colored_name.bright_cyan(),
+            Some(x) if x.is_char_device() || x.is_block_device() => colored_name.green(),
+            Some(x) if x.is_fifo() => colored_name.bold().purple(),
+            _ => colored_name,
+        };
+
+        println!("{}", colored_name);
     }
 
     pub fn print_subtree(
         &self,
-        options: Options,
+        options: &Options,
         prefix: &mut Vec<&str>,
-        flags: (bool, bool),
+        flags: (bool, bool, Option<u64>),
     ) -> () {
-        let mut depth_limit = false;
-        let mut depth = 0;
-
-        // THIS IS FUCKING RETARDED AND UGLY
-        if let Some(depth_) = options.depth {
-            depth_limit = true;
-            if depth_ <= 0 {
-                return ();
-            }
-            depth = depth_;
-        }
-
-        let (end, root) = flags;
+        let (end, root, depth) = flags;
+        let depth = match depth {
+            None => None,
+            Some(0) => return (),
+            Some(x) => Some(x - 1),
+        };
 
         if !root {
-            self.print(&options, &prefix, flags);
+            self.print(&options, &prefix, (end, root));
             prefix.push(if end { SPACE } else { PIPE });
         }
 
-        let children = self.children.len();
         for (index, child) in self.children.iter().enumerate() {
-            let mut options_next = options.clone();
-            if depth_limit {
-                options_next.depth = Some(depth - 1);
-            }
-
-            let end = index == children - 1;
-            child.print_subtree(options_next, prefix, (end, false));
+            let end = index == self.children.len() - 1;
+            child.print_subtree(&options, prefix, (end, false, depth));
         }
 
         prefix.pop();
     }
 
-    fn print_size(options: &Options, mut size: u64) {
-        let divisor = if options.decimal {DIVISOR_DEC} else {DIVISOR};
-        let units = if options.decimal {UNITS_DEC} else {UNITS};
+    fn size_string(options: &Options, mut size: u64) -> String {
+        let (units, divisor) = options.units;
         let mut unit = 0;
-        while size > divisor {
+        size *= 100;
+
+        while size > divisor * 100 {
             size /= divisor;
             unit += 1;
         }
-        print!("{:1$}", size, 4);
-        print!(" {:>1$}  ", units[unit], 3);
+        format!("{:.2}", (size as f64) / 100.0) + &format!(" {}  ", units[unit])
     }
 }
 
@@ -87,7 +95,7 @@ impl FileTree {
             None => return (),
             Some(root) => {
                 root.print(&options, &prefix, (false, true));
-                root.print_subtree(options, prefix, (false, true));
+                root.print_subtree(&options, prefix, (false, true, options.depth));
             }
         }
     }
