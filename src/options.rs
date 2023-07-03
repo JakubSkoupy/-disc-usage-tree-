@@ -104,23 +104,24 @@ impl Options {
         if input.decimal {
             options.units = (&print::UNITS_DEC, print::DIVISOR_DEC)
         };
+
         options.depth = match input.depth {
             None => None,
             Some(depth) => Some(depth + 1),
         };
 
         options.colors = !input.nocolor;
+
+        let (_, percent) = options.size;
+        let mut size = Size::Length;
         if input.block_size {
-            let (_, percent) = options.size;
-            let mut size = Size::Length;
-            if input.block_size {
-                size = Size::BlockSize
-            };
-            if input.blocks {
-                size = Size::Blocks
-            };
-            options.size = (size, percent);
-        }
+            size = Size::BlockSize
+        };
+        if input.blocks {
+            size = Size::Blocks
+        };
+        options.size = (size, percent);
+
         options
     }
 }

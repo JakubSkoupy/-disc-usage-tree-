@@ -1,6 +1,7 @@
 use std::os::unix::prelude::FileTypeExt;
 
 use crate::options::Options;
+use crate::options::Size;
 use crate::tree::FileNode;
 use crate::tree::FileTree;
 use colored::Colorize;
@@ -27,7 +28,7 @@ impl FileNode {
         let (end, root) = flags;
 
         let size_string = FileNode::size_string(options, self.size);
-        print!("{:>13}{}", size_string, &prefix.join(""));
+        print!("{:>13} {}", size_string, &prefix.join(""));
 
         if !root {
             if end {
@@ -38,14 +39,16 @@ impl FileNode {
         }
 
         let mut colored_name = self.name.white();
-        colored_name = match self.filetype {
-            None => colored_name.bright_red().underline(),
-            Some(x) if x.is_dir() => colored_name.bold().cyan(),
-            Some(x) if x.is_symlink() => colored_name.bright_cyan(),
-            Some(x) if x.is_char_device() || x.is_block_device() => colored_name.green(),
-            Some(x) if x.is_fifo() => colored_name.bold().purple(),
-            _ => colored_name,
-        };
+        if options.colors {
+            colored_name = match self.filetype {
+                None => colored_name.bright_red().underline(),
+                Some(x) if x.is_dir() => colored_name.bold().cyan(),
+                Some(x) if x.is_symlink() => colored_name.bright_cyan(),
+                Some(x) if x.is_char_device() || x.is_block_device() => colored_name.green(),
+                Some(x) if x.is_fifo() => colored_name.bold().purple(),
+                _ => colored_name,
+            };
+        }
 
         println!("{}", colored_name);
     }
@@ -85,7 +88,12 @@ impl FileNode {
             size /= divisor;
             unit += 1;
         }
-        format!("{:.2}", (size as f64) / 100.0) + &format!(" {}  ", units[unit])
+        let postfix = match options.size {
+            (Size::Blocks, _) => return format!("{:5} blocks", size / 100),
+            _ => units[unit],
+        };
+
+        format!("{:.2}", (size as f64) / 100.0) + &format!(" {}  ", postfix)
     }
 }
 
