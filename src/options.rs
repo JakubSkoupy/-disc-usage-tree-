@@ -35,12 +35,6 @@ pub struct ParsingOptions {
     #[clap(short = 'p')]
     percent: bool,
 
-    #[clap(short = 'n')]
-    name_sort: bool,
-
-    #[clap(short = 'd', default_value = "false")]
-    device: bool,
-
     #[clap(short = 'l', long = "depth")]
     depth: Option<u64>,
 
