@@ -2,15 +2,7 @@ use crate::tree::FileNode;
 use crate::{data_functions, print};
 use clap::Parser;
 
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-*   ██████╗ ██████╗ ████████╗██╗ ██████╗ ███╗   ██╗███████╗
-*  ██╔═══██╗██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║██╔════╝
-*  ██║   ██║██████╔╝   ██║   ██║██║   ██║██╔██╗ ██║███████╗
-*  ██║   ██║██╔═══╝    ██║   ██║██║   ██║██║╚██╗██║╚════██║
-*  ╚██████╔╝██║        ██║   ██║╚██████╔╝██║ ╚████║███████║
-*   ╚═════╝ ╚═╝        ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝
-* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
+#[derive(PartialEq)]
 pub enum Size {
     Length,
     BlockSize,
@@ -75,10 +67,22 @@ impl Options {
     pub fn compile(input: &ParsingOptions) -> Self {
         let mut options = Options::default();
 
+        // size
         if input.percent {
             let (size, _) = options.size;
             options.size = (size, true);
         }
+
+        let (mut size, percent) = options.size;
+        if size != Size::Length {
+            if input.block_size {
+                size = Size::BlockSize
+            };
+            if input.blocks {
+                size = Size::Blocks
+            };
+        }
+        options.size = (size, percent);
 
         if let Some(sort_method) = &input.sort {
             options.sort = match sort_method.as_str() {
@@ -88,6 +92,7 @@ impl Options {
             }
         }
 
+        // verbosity
         if input.verbose {
             options.verbosity = 2
         };
@@ -95,26 +100,17 @@ impl Options {
             options.verbosity = 0
         };
 
+        // display
         if input.decimal {
             options.units = (&print::UNITS_DEC, print::DIVISOR_DEC)
         };
+        options.colors = !input.nocolor;
 
+        // depth
         options.depth = match input.depth {
             None => None,
             Some(depth) => Some(depth + 1),
         };
-
-        options.colors = !input.nocolor;
-
-        let (_, percent) = options.size;
-        let mut size = Size::Length;
-        if input.block_size {
-            size = Size::BlockSize
-        };
-        if input.blocks {
-            size = Size::Blocks
-        };
-        options.size = (size, percent);
 
         options
     }
