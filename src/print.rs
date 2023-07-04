@@ -23,22 +23,31 @@ pub fn error_display(message: &str, options: &Options, verbosity: u8) {
     }
 }
 
+#[derive(Clone)]
+pub struct PrintOptions {
+    end: bool,
+    root: bool,
+    root_size: Option<u64>,
+    root_error: bool,
+    depth: Option<u64>,
+}
+
 impl FileNode {
-    fn print(&self, options: &Options, prefix: &Vec<&str>, flags: (bool, bool)) -> () {
-        let (end, root) = flags;
-
-        let size_string = FileNode::size_string(options, self.size);
-        print!("{:>13} {}", size_string, &prefix.join(""));
-
-        if !root {
-            if end {
-                print!("{}", END)
-            } else {
-                print!("{}", BRANCH)
-            };
+    fn print_error(&self, options: &Options) -> () {
+        match self.error {
+            true => {
+                match options.colors {
+                    true => print!("{}", "E".bright_red()),
+                    false => print!("E"),
+                };
+            }
+            false => print!(" "),
         }
+    }
 
+    fn print_name(&self, options: &Options) -> () {
         let mut colored_name = self.name.white();
+
         if options.colors {
             colored_name = match self.filetype {
                 None => colored_name.bright_red().underline(),
@@ -49,50 +58,97 @@ impl FileNode {
                 _ => colored_name,
             };
         }
-
         println!("{}", colored_name);
+    }
+
+    fn print_prefix(
+        options: &Options,
+        size_string: String,
+        prefix: &Vec<&str>,
+        print_options: &PrintOptions,
+    ) -> () {
+        let mut ext = "".to_string();
+        if !print_options.root {
+            ext = match print_options.end {
+                true => format!("{}", END),
+                false => format!("{}", BRANCH),
+            };
+        }
+
+        match options.indent_size {
+            true => print!(" {}{}  {:>8}", &prefix.join(""), ext, size_string),
+            false => print!("{:>13}{}{}", size_string, &prefix.join(""), ext),
+        }
+    }
+
+    fn print(&self, options: &Options, prefix: &Vec<&str>, print_options: &PrintOptions) -> () {
+        if print_options.root_error {
+            self.print_error(options);
+        }
+
+        let size_string = Self::size_string(options, self.size, print_options);
+        FileNode::print_prefix(options, size_string, prefix, print_options);
+
+        self.print_name(options);
     }
 
     pub fn print_subtree(
         &self,
         options: &Options,
         prefix: &mut Vec<&str>,
-        flags: (bool, bool, Option<u64>),
+        mut print_options: PrintOptions,
     ) -> () {
-        let (end, root, depth) = flags;
-        let depth = match depth {
+        print_options.depth = match print_options.depth {
             None => None,
             Some(0) => return (),
             Some(x) => Some(x - 1),
         };
 
-        if !root {
-            self.print(&options, &prefix, (end, root));
-            prefix.push(if end { SPACE } else { PIPE });
+        if !print_options.root {
+            self.print(&options, &prefix, &print_options);
+            prefix.push(if print_options.end { SPACE } else { PIPE });
         }
 
         for (index, child) in self.children.iter().enumerate() {
             let end = index == self.children.len() - 1;
-            child.print_subtree(&options, prefix, (end, false, depth));
+
+            let mut print_options = print_options.clone();
+            print_options.end = end;
+            print_options.root = false;
+
+            child.print_subtree(&options, prefix, print_options);
         }
 
         prefix.pop();
     }
 
-    fn size_string(options: &Options, mut size: u64) -> String {
+    fn size_string(options: &Options, mut size: u64, print_options: &PrintOptions) -> String {
         let (units, divisor) = options.units;
         let mut unit = 0;
         size *= 100;
 
-        while size > divisor * 100 {
-            size /= divisor;
-            unit += 1;
-        }
-        let postfix = match options.size {
-            (Size::Blocks, _) => return format!("{:5} blocks", size / 100),
-            _ => units[unit],
+        if let (Size::Blocks, _) = options.size {
+            return format!("{:5} bl ", size / 100);
         };
 
+        let mut postfix = units[unit];
+        match options.size {
+            // sizes in units
+            (_, false) => {
+                while size > (divisor * 100) {
+                    size /= divisor;
+                    unit += 1;
+                    postfix = units[unit];
+                }
+            }
+
+            // sizes in %
+            (_, true) => {
+                // this branch <=> root_size != None
+                size = (100 * size) / print_options.root_size.unwrap();
+                postfix = "%";
+            }
+        }
         format!("{:.2}", (size as f64) / 100.0) + &format!(" {}  ", postfix)
     }
 }
@@ -102,8 +158,18 @@ impl FileTree {
         match &self.root {
             None => return (),
             Some(root) => {
-                root.print(&options, &prefix, (false, true));
-                root.print_subtree(&options, prefix, (false, true, options.depth));
+                let print_options = PrintOptions {
+                    end: false,
+                    root: true,
+                    root_size: match options.size {
+                        (_, true) => Some(root.size),
+                        (_, false) => None,
+                    },
+                    depth: options.depth,
+                    root_error: root.error,
+                };
+                root.print(&options, &prefix, &print_options);
+                root.print_subtree(&options, prefix, print_options);
             }
         }
     }

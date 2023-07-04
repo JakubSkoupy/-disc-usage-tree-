@@ -21,6 +21,9 @@ pub struct ParsingOptions {
     #[clap(short = 'v', long = "verbose")]
     verbose: bool,
 
+    #[clap(short = 'i', long = "indent")]
+    indent: bool,
+
     #[clap(short = 'q', long = "quiet")]
     quiet: bool,
 
@@ -49,6 +52,7 @@ pub struct Options {
     pub sort: Option<fn(&Box<FileNode>, &Box<FileNode>) -> std::cmp::Ordering>,
     pub depth: Option<u64>,
     pub units: (&'static [&'static str; 7], u64),
+    pub indent_size: bool,
     pub colors: bool,
 }
 
@@ -60,6 +64,7 @@ impl Options {
             sort: None,
             depth: None,
             units: (&print::UNITS, print::DIVISOR),
+            indent_size: false,
             colors: true,
         }
     }
@@ -74,14 +79,12 @@ impl Options {
         }
 
         let (mut size, percent) = options.size;
-        if size != Size::Length {
-            if input.block_size {
-                size = Size::BlockSize
-            };
-            if input.blocks {
-                size = Size::Blocks
-            };
-        }
+        if input.block_size {
+            size = Size::BlockSize
+        };
+        if input.blocks {
+            size = Size::Blocks
+        };
         options.size = (size, percent);
 
         if let Some(sort_method) = &input.sort {
@@ -111,6 +114,8 @@ impl Options {
             None => None,
             Some(depth) => Some(depth + 1),
         };
+
+        options.indent_size = input.indent;
 
         options
     }
